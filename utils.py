@@ -3,6 +3,7 @@ import numpy as np
 from PIL import Image, ImageDraw
 import torch
 from torch.utils.data import TensorDataset
+from torchvision import transforms
 
 
 def read_img(root, filedir, transform=None):
@@ -59,26 +60,28 @@ def read_img_landmarks(image_root, landmark_root, filedir, transform=None):
     return TensorDataset(images, landmarks)
 
 
+def rescale_landmarks(landmarks, original_size, crop_size=224, resize_size=256):
+    # Scale factor between the original 350x350 and the required 224x224
+    original_size_x, original_size_y = 350, 350
+    scale_factor_x = crop_size / original_size_x
+    scale_factor_y = crop_size / original_size_y
+
+    landmarks[:, 0] *= scale_factor_x
+    landmarks[:, 1] *= scale_factor_y
+
+    return landmarks
+
+
 def display_landmarks(image, landmarks_tensor, image_name):
-    """
-    Display landmarks on top of the image using PIL.
-
-    Parameters:
-        image_tensor (torch.Tensor): A tensor of shape (C, H, W).
-        landmarks_tensor (torch.Tensor): A tensor of shape (num_landmarks * 2,).
-        image_name (str): The name to save the image with landmarks as.
-
-    Returns:
-        None
-    """
-
+    # Draw directly on the image
     draw = ImageDraw.Draw(image)
     landmarks = landmarks_tensor.cpu().numpy().reshape(-1, 2)
 
-    # Draw circles at the landmark locations
+    # Draw the landmarks on the image
     for x, y in landmarks.astype(int):
         draw.ellipse([(x-3, y-3), (x+3, y+3)], outline='red', width=2)
 
+    # Save the modified image with landmarks
     if not os.path.exists('results'):
         os.makedirs('results')
     image.save(os.path.join('results', image_name))

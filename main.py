@@ -152,10 +152,10 @@ def main(args):
 
             # Update fold metrics
             fold_metrics.append({
-                'fold': fold,
-                'corr': correlation,
-                'mae': mae,
-                'rmse': rmse
+                'fold': int(fold),
+                'corr': float(correlation),
+                'mae': float(mae),
+                'rmse': float(rmse)
             })
 
         # Save landmark training metrics
@@ -197,7 +197,6 @@ def main(args):
         models = [load_landmark_model(models_path, device)
                   for models_path in models_paths]
         landmarks = infer_landmarks(models, image_path, transform, device)
-        print(f"The predicted landmarks are:\n{landmarks}")
 
 
 if __name__ == '__main__':

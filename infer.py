@@ -4,7 +4,7 @@ import numpy as np
 import os
 from PIL import Image
 from torchvision.transforms import transforms
-from utils import display_landmarks
+from utils import display_landmarks, rescale_landmarks
 
 num_landmarks = 86  # Number of landmarks in the dataset
 
@@ -63,6 +63,7 @@ def infer_bootstrap(models, image_path, transform, device):
         with torch.no_grad():
             output = model(image)
             score = output.item()
+            print(f"  Score: {score:.4f}")
         scores.append(score)
 
     mean_score = np.mean(scores)
@@ -72,28 +73,43 @@ def infer_bootstrap(models, image_path, transform, device):
 
 
 def infer_landmarks(models, image_path, transform, device):
+    # Load the original image and convert to RGB
     original_image = Image.open(image_path).convert('RGB')
-    image = transform(original_image)
-    image = image.unsqueeze(0)
-    image = image.to(device)
+
+    # Create a temporary transform to visualize the image that the model sees
+    temp_transform = transforms.Compose([
+        transforms.Resize(256),
+        transforms.CenterCrop(224),
+        transforms.ToTensor()
+    ])
+
+    # Apply the temporary transform for display purposes
+    display_image = temp_transform(original_image)
+    display_image = transforms.ToPILImage()(display_image)
+
+    # Apply the original transform to the image for model inference
+    transformed_image = transform(original_image)
+    image = transformed_image.unsqueeze(0).to(device)
 
     all_landmarks = []
-
     for model in models:
         model.eval()
         with torch.no_grad():
             output = model(image)
-
-            # Reshape the output to [num_landmarks, 2]
             landmarks = output.cpu().squeeze().view(-1, 2).numpy()
             all_landmarks.append(landmarks)
 
-    # Average the landmarks across all models
+    # Average the landmarks
     avg_landmarks = np.mean(np.array(all_landmarks), axis=0)
 
-    # Display the landmarks on top of the original image
-    image_name = os.path.basename(image_path).replace('.jpg', '_landmarks.jpg')
-    display_landmarks(original_image, torch.tensor(avg_landmarks), image_name)
+    # Rescale the landmarks to the original image size
+    avg_landmarks = rescale_landmarks(
+        avg_landmarks, original_image.size)
+
+    # Open the transformed image used for display and draw landmarks on it
+    file_name, file_ext = os.path.splitext(os.path.basename(image_path))
+    image_name = f"{file_name}_landmarks{file_ext}"
+    display_landmarks(display_image, torch.tensor(avg_landmarks), image_name)
 
     return avg_landmarks
 

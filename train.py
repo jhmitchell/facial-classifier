@@ -5,10 +5,10 @@ import torch.optim as optim
 import time
 from torchvision import models
 
-num_epochs = 10  # Number of training epochs
+num_epochs = 20  # Number of training epochs
 avg_window_size = 10  # Number of latest batches to average over for time
 
-num_landmarks = 86 # Number of landmarks in the dataset
+num_landmarks = 86 
 
 time_list = []
 
