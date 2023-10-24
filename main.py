@@ -7,10 +7,10 @@ import json
 import torch
 import torchvision.transforms as transforms
 from torch.utils.data import DataLoader
-from utils import read_img
-from train import train_model
-from evaluate import evaluate_model
-from infer import load_model, infer_bootstrap
+from utils import read_img, read_img_landmarks, display_landmarks
+from train import train_model, train_landmarks
+from evaluate import evaluate_model, evaluate_landmarks
+from infer import load_model, load_landmark_model, infer_bootstrap, infer_landmarks
 
 
 def main(args):
@@ -28,7 +28,7 @@ def main(args):
 
     metrics = {}
 
-    if args.mode == 'train':
+    if args.mode == 'train-images':
         # Metrics for each fold
         correlations, maes, rmses = [], [], []
 
@@ -107,25 +107,103 @@ def main(args):
         with open('training_metrics.json', 'w') as f:
             json.dump(metrics, f, indent=4)
 
+    elif args.mode == 'train-landmarks':
+        print(f"Training Landmarks Configuration:")
+        print(f"  Root Directory: {root}")
+        print(f"  Batch Size: 32")
+        print(f"  Device: {device}")
+        print("=" * 50)
+
+        landmark_root = './data/landmarks'
+
+        # Metrics for each fold
+        fold_metrics = []
+
+        for fold in range(1, 6):
+            print(f"Starting Training for Landmarks for Fold {fold}...")
+            traindir = f'./data/train_test_files/cross/cross_validation_{fold}/train_{fold}.txt'
+            valdir = f'./data/train_test_files/cross/cross_validation_{fold}/test_{fold}.txt'
+
+            # Implement this function to return datasets with both images and landmarks
+            train_dataset = read_img_landmarks(
+                root, landmark_root, traindir, transform=transform)
+            val_dataset = read_img_landmarks(
+                root, landmark_root, valdir, transform=transform)
+
+            train_loader = DataLoader(
+                train_dataset, batch_size=32, shuffle=True)
+            val_loader = DataLoader(val_dataset, batch_size=1, shuffle=False)
+
+            print(f"  Training Landmarks...")
+            # Implement train_landmarks
+            model = train_landmarks(train_loader, device, fold)
+
+            print(f"  Evaluating Landmarks...")
+            # Implement evaluate_landmarks similar to evaluate_model but for landmarks
+            correlation, mae, rmse = evaluate_landmarks(
+                model, val_loader, device)
+
+            # Display fold summary
+            print(f"  Completed Fold {fold}")
+            print(f"    Correlation: {correlation:.4f}")
+            print(f"    MAE: {mae:.4f}")
+            print(f"    RMSE: {rmse:.4f}")
+            print("=" * 50)
+
+            # Update fold metrics
+            fold_metrics.append({
+                'fold': fold,
+                'corr': correlation,
+                'mae': mae,
+                'rmse': rmse
+            })
+
+        # Save landmark training metrics
+        metrics['landmark_folds'] = fold_metrics
+
+        # Save metrics to disk
+        print("Saving landmark training metrics to disk...")
+        with open('landmark_training_metrics.json', 'w') as f:
+            json.dump(metrics, f, indent=4)
+
     elif args.mode == 'infer':
         models_path = args.models_path
         image_path = args.image_path
-        
-        models_paths = glob.glob(os.path.join(models_path, '*.pth'))
+
+        models_paths = glob.glob(os.path.join(
+            models_path, 'resnext50_fold_*.pth'))
         if not models_paths:
             print("No models found in the specified directory.")
             return
 
-        models = [load_model(models_path, device) for models_path in models_paths]
-        
-        mean_score, error = infer_bootstrap(models, image_path, transform, device)
-        print(f"The predicted attractiveness score is {mean_score:.3f} ± {error:.3f}")
+        models = [load_model(models_path, device)
+                  for models_path in models_paths]
+
+        mean_score, error = infer_bootstrap(
+            models, image_path, transform, device)
+        print(
+            f"The predicted attractiveness score is {mean_score:.3f} ± {error:.3f}")
+
+    elif args.mode == 'infer-landmarks':
+        models_path = args.models_path
+        image_path = args.image_path
+
+        models_paths = glob.glob(os.path.join(
+            models_path, 'resnext50_landmarks_fold_*.pth'))
+        if not models_paths:
+            print("No landmark models found in the specified directory.")
+            return
+
+        models = [load_landmark_model(models_path, device)
+                  for models_path in models_paths]
+        landmarks = infer_landmarks(models, image_path, transform, device)
+        print(f"The predicted landmarks are:\n{landmarks}")
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Train or infer the model.")
-    parser.add_argument('--mode', type=str, required=True, choices=['train', 'infer'],
-                        help='Mode to run the script in. Choices are "train" and "infer".')
+    parser.add_argument('--mode', type=str, required=True, choices=['train-images', 'train-landmarks', 'infer', 'infer-landmarks'],
+                        help='Mode to run the script in. Choices are "train-images", "train-landmarks", and "infer".')
     parser.add_argument('-m', '--models-path', dest='models_path', type=str, default=None,
                         help='Directory containing the pre-trained models. Required only in "infer" mode.')
     parser.add_argument('-i', '--image-path', dest='image_path', type=str, default=None,

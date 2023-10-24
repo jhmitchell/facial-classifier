@@ -1,8 +1,13 @@
 import torch
 import torchvision.models as models
 import numpy as np
+import os
 from PIL import Image
 from torchvision.transforms import transforms
+from utils import display_landmarks
+
+num_landmarks = 86  # Number of landmarks in the dataset
+
 
 def load_model(model_path, device):
     """
@@ -16,11 +21,22 @@ def load_model(model_path, device):
         model (torch.nn.Module): The loaded model.
     """
     model = models.resnext50_32x4d(weights=None)
-    model.fc = torch.nn.Linear(model.fc.in_features, 1)  # Assuming we are predicting a single score
+    # Assuming we are predicting a single score
+    model.fc = torch.nn.Linear(model.fc.in_features, 1)
     model.load_state_dict(torch.load(model_path, map_location=device))
     model.to(device)
     model.eval()  # Set to evaluation mode
     return model
+
+
+def load_landmark_model(model_path, device):
+    model = models.resnext50_32x4d(weights=None)
+    model.fc = torch.nn.Linear(model.fc.in_features, num_landmarks * 2)
+    model.load_state_dict(torch.load(model_path, map_location=device))
+    model.to(device)
+    model.eval()
+    return model
+
 
 def infer(model, image_path, transform, device):
     image = Image.open(image_path).convert('RGB')
@@ -33,6 +49,7 @@ def infer(model, image_path, transform, device):
         score = output.item()
 
     return score
+
 
 def infer_bootstrap(models, image_path, transform, device):
     scores = []
@@ -50,8 +67,36 @@ def infer_bootstrap(models, image_path, transform, device):
 
     mean_score = np.mean(scores)
     error = 2*np.std(scores)  # Standard deviation as a measure of "error"
-    
+
     return mean_score, error
+
+
+def infer_landmarks(models, image_path, transform, device):
+    original_image = Image.open(image_path).convert('RGB')
+    image = transform(original_image)
+    image = image.unsqueeze(0)
+    image = image.to(device)
+
+    all_landmarks = []
+
+    for model in models:
+        model.eval()
+        with torch.no_grad():
+            output = model(image)
+
+            # Reshape the output to [num_landmarks, 2]
+            landmarks = output.cpu().squeeze().view(-1, 2).numpy()
+            all_landmarks.append(landmarks)
+
+    # Average the landmarks across all models
+    avg_landmarks = np.mean(np.array(all_landmarks), axis=0)
+
+    # Display the landmarks on top of the original image
+    image_name = os.path.basename(image_path).replace('.jpg', '_landmarks.jpg')
+    display_landmarks(original_image, torch.tensor(avg_landmarks), image_name)
+
+    return avg_landmarks
+
 
 # Example usage:
 if __name__ == "__main__":
@@ -60,7 +105,8 @@ if __name__ == "__main__":
         transforms.Resize(256),
         transforms.CenterCrop(224),
         transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[
+                             0.229, 0.224, 0.225]),
     ])
 
     model_path = './models/resnext50_model.pth'

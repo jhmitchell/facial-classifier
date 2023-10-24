@@ -5,6 +5,7 @@ def pts2txt(din, dout, src):
     src_p = os.path.join(din, src)
     data = open(src_p, 'rb').read()
     if len(data) < 692:
+        print(str(src) + ' is broken - ', len(data))
         return 0
     points = struct.unpack('i172f', data)
 
