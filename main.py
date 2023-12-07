@@ -1,12 +1,11 @@
 import os
+import sys
 import numpy as np
 import argparse
 import glob
 import json
 import torch
 import torchvision.transforms as transforms
-import streamlit as st
-from PIL import Image
 from torch.utils.data import DataLoader
 from utils import read_img, read_img_landmarks, display_landmarks
 from train import train_model, train_landmarks
@@ -14,7 +13,7 @@ from evaluate import evaluate_model, evaluate_landmarks
 from infer import load_model, load_landmark_model, infer_bootstrap, infer_landmarks
 
 
-def main(config):
+def main(args):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     transform = transforms.Compose([
@@ -29,7 +28,7 @@ def main(config):
 
     metrics = {}
 
-    if config["mode"] == 'train-images':
+    if args.mode == 'train-images':
         # Metrics for each fold
         correlations, maes, rmses = [], [], []
 
@@ -108,7 +107,7 @@ def main(config):
         with open('training_metrics.json', 'w') as f:
             json.dump(metrics, f, indent=4)
 
-    elif config["mode"] == 'train-landmarks':
+    elif args.mode == 'train-landmarks':
         print(f"Training Landmarks Configuration:")
         print(f"  Root Directory: {root}")
         print(f"  Batch Size: 32")
@@ -167,9 +166,9 @@ def main(config):
         with open('landmark_training_metrics.json', 'w') as f:
             json.dump(metrics, f, indent=4)
 
-    elif config["mode"] == 'infer':
-        models_path = config["models_path"]
-        image_path = config["image_path"]
+    elif args.mode == 'infer':
+        models_path = args.models_path
+        image_path = args.image_path
 
         models_paths = glob.glob(os.path.join(
             models_path, 'resnext50_fold_*.pth'))
@@ -185,9 +184,9 @@ def main(config):
         print(
             f"The predicted attractiveness score is {mean_score:.3f} ± {error:.3f}")
 
-    elif config["mode"] == 'infer-landmarks':
-        models_path = config["models_path"]
-        image_path = config["image_path"]
+    elif args.mode == 'infer-landmarks':
+        models_path = args.models_path
+        image_path = args.image_path
 
         models_paths = glob.glob(os.path.join(
             models_path, 'resnext50_landmarks_fold_*.pth'))
@@ -201,21 +200,13 @@ def main(config):
 
 
 if __name__ == '__main__':
-    st.title("Attractiveness Prediction")
-    with st.sidebar:
-        uploaded_file = st.file_uploader("Choose an image...", type=["jpg", "jpeg", "png"])
+    parser = argparse.ArgumentParser(description="Train or infer the model.")
+    parser.add_argument('--mode', type=str, required=True, choices=['train-images', 'train-landmarks', 'infer', 'infer-landmarks'],
+                        help='Mode to run the script in. Choices are "train-images", "train-landmarks", and "infer".')
+    parser.add_argument('-m', '--models-path', dest='models_path', type=str, default=None,
+                        help='Directory containing the pre-trained models. Required only in "infer" mode.')
+    parser.add_argument('-i', '--image-path', dest='image_path', type=str, default=None,
+                        help='Path to the image to be inferred. Required only in "infer" mode.')
+    args = parser.parse_args()
 
-    models_path = './models'
-    mode = 'infer'
-
-    if uploaded_file is not None and models_path is not None:
-        with open("temp_uploaded_image.jpg", "wb") as f:
-            f.write(uploaded_file.getbuffer())
-
-        # produce 'args' from mode, models_path, and image_path
-        config = {
-            'mode': mode,
-            'models_path': models_path,
-            'image_path': 'temp_uploaded_image.jpg'
-        }
-        main(config)
+    main(args)
